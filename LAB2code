@@ -1,0 +1,245 @@
+import javax.swing.*;
+import java.awt.*;
+import java.awt.event.*;
+import java.awt.image.BufferedImage;
+import java.io.File;
+import javax.imageio.ImageIO;
+
+public class ImageProcessingApp extends JFrame {
+    private JLabel imageLabel;
+    private BufferedImage originalImage;
+
+    public ImageProcessingApp() {
+        setTitle("Image Processing App");
+        setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
+        setLayout(new BorderLayout());
+        setSize(800, 600);
+
+        imageLabel = new JLabel();
+        add(new JScrollPane(imageLabel), BorderLayout.CENTER);
+
+        JPanel controlPanel = new JPanel();
+        JButton loadButton = new JButton("Загрузить изображение");
+        loadButton.addActionListener(new LoadImageAction());
+
+        JButton medianFilterButton = new JButton("Медианный фильтр");
+        medianFilterButton.addActionListener(new ApplyMedianFilterAction());
+
+        JButton otsuThresholdButton = new JButton("Метод Отсу");
+        otsuThresholdButton.addActionListener(new ApplyOtsuThresholdAction());
+
+        JButton simpleThresholdButton = new JButton("Простой пороговый метод");
+        simpleThresholdButton.addActionListener(new ApplySimpleThresholdAction());
+
+        controlPanel.add(loadButton);
+        controlPanel.add(medianFilterButton);
+        controlPanel.add(otsuThresholdButton);
+        controlPanel.add(simpleThresholdButton);
+
+        add(controlPanel, BorderLayout.SOUTH);
+        addComponentListener(new ComponentAdapter() {
+            @Override
+            public void componentResized(ComponentEvent e) {
+                if (originalImage != null) {
+                    updateDisplayedImage(originalImage);
+                }
+            }
+        });
+    }
+
+
+    private class LoadImageAction implements ActionListener {
+        @Override
+        public void actionPerformed(ActionEvent e) {
+            JFileChooser fileChooser = new JFileChooser(System.getProperty("user.dir"));
+
+            int returnValue = fileChooser.showOpenDialog(null);
+            if (returnValue == JFileChooser.APPROVE_OPTION) {
+                try {
+                    File file = fileChooser.getSelectedFile();
+                    originalImage = ImageIO.read(file);
+                    updateDisplayedImage(originalImage);
+                    pack();
+                } catch (Exception ex) {
+                    ex.printStackTrace();
+                }
+            }
+        }
+    }
+
+    private void updateDisplayedImage(BufferedImage image) {
+        int labelWidth = imageLabel.getWidth();
+        int labelHeight = imageLabel.getHeight();
+        int imageWidth = image.getWidth();
+        int imageHeight = image.getHeight();
+
+        double scale = Math.min((double) labelWidth / imageWidth, (double) labelHeight / imageHeight);
+        int newWidth = (int) (imageWidth * scale);
+        int newHeight = (int) (imageHeight * scale);
+
+        BufferedImage displayedImage = new BufferedImage(newWidth, newHeight, image.getType());
+        Graphics2D g2d = displayedImage.createGraphics();
+        g2d.drawImage(image, 0, 0, newWidth, newHeight, null);
+        g2d.dispose();
+
+        imageLabel.setIcon(new ImageIcon(displayedImage));
+    }
+
+    private class ApplyMedianFilterAction implements ActionListener {
+        @Override
+        public void actionPerformed(ActionEvent e) {
+            if (originalImage == null) return;
+            BufferedImage filteredImage = applyMedianFilter(originalImage);
+            updateDisplayedImage(filteredImage);
+        }
+    }
+
+    private class ApplyOtsuThresholdAction implements ActionListener {
+        @Override
+        public void actionPerformed(ActionEvent e) {
+            if (originalImage == null) return;
+            BufferedImage thresholdedImage = applyOtsuThreshold(originalImage);
+            updateDisplayedImage(thresholdedImage);
+        }
+    }
+
+    private class ApplySimpleThresholdAction implements ActionListener {
+        @Override
+        public void actionPerformed(ActionEvent e) {
+            if (originalImage == null) return;
+            int threshold = 128; // порог
+            BufferedImage thresholdedImage = applySimpleThreshold(originalImage, threshold);
+            updateDisplayedImage(thresholdedImage);
+        }
+    }
+
+    private BufferedImage applyMedianFilter(BufferedImage image) {
+        int width = image.getWidth();
+        int height = image.getHeight();
+        BufferedImage outputImage = new BufferedImage(width, height, image.getType());
+
+        int[] redWindow = new int[9];
+        int[] greenWindow = new int[9];
+        int[] blueWindow = new int[9];
+
+        for (int y = 1; y < height - 1; y++) {
+            for (int x = 1; x < width - 1; x++) {
+                int k = 0;
+                for (int j = -1; j <= 1; j++) {
+                    for (int i = -1; i <= 1; i++) {
+                        Color color = new Color(image.getRGB(x + i, y + j));
+                        redWindow[k] = color.getRed();
+                        greenWindow[k] = color.getGreen();
+                        blueWindow[k] = color.getBlue();
+                        k++;
+                    }
+                }
+
+                int redMedian = quickSelect(redWindow, 0, redWindow.length - 1, redWindow.length / 2);
+                int greenMedian = quickSelect(greenWindow, 0, greenWindow.length - 1, greenWindow.length / 2);
+                int blueMedian = quickSelect(blueWindow, 0, blueWindow.length - 1, blueWindow.length / 2);
+
+                outputImage.setRGB(x, y, new Color(redMedian, greenMedian, blueMedian).getRGB());
+            }
+        }
+        return outputImage;
+    }
+
+    private int quickSelect(int[] arr, int left, int right, int k) {
+        if (left == right) return arr[left];
+        int pivotIndex = partition(arr, left, right);
+        if (k == pivotIndex) return arr[k];
+        else if (k < pivotIndex) return quickSelect(arr, left, pivotIndex - 1, k);
+        else return quickSelect(arr, pivotIndex + 1, right, k);
+    }
+
+    private int partition(int[] arr, int left, int right) {
+        int pivot = arr[right];
+        int i = left;
+        for (int j = left; j < right; j++) {
+            if (arr[j] <= pivot) {
+                swap(arr, i, j);
+                i++;
+            }
+        }
+        swap(arr, i, right);
+        return i;
+    }
+
+    private void swap(int[] arr, int i, int j) {
+        int temp = arr[i];
+        arr[i] = arr[j];
+        arr[j] = temp;
+    }
+
+    private BufferedImage applyOtsuThreshold(BufferedImage image) {
+        int width = image.getWidth();
+        int height = image.getHeight();
+        BufferedImage outputImage = new BufferedImage(width, height, image.getType());
+
+        int[] histogram = new int[256];
+        for (int y = 0; y < height; y++) {
+            for (int x = 0; x < width; x++) {
+                int gray = new Color(image.getRGB(x, y)).getRed();
+                histogram[gray]++;
+            }
+        }
+
+        int total = width * height;
+        float sum = 0;
+        for (int i = 0; i < 256; i++) sum += i * histogram[i];
+
+        float sumB = 0;
+        int wB = 0, wF = 0;
+        float varMax = 0;
+        int threshold = 0;
+
+        for (int i = 0; i < 256; i++) {
+            wB += histogram[i];
+            if (wB == 0) continue;
+            wF = total - wB;
+            if (wF == 0) break;
+
+            sumB += (float) (i * histogram[i]);
+            float mB = sumB / wB;
+            float mF = (sum - sumB) / wF;
+
+            float varBetween = (float) wB * (float) wF * (mB - mF) * (mB - mF);
+            if (varBetween > varMax) {
+                varMax = varBetween;
+                threshold = i;  // порог
+            }
+        }
+
+        for (int y = 0; y < height; y++) {
+            for (int x = 0; x < width; x++) {
+                int gray = new Color(image.getRGB(x, y)).getRed();
+                int binary = gray > threshold ? 255 : 0;
+                outputImage.setRGB(x, y, new Color(binary, binary, binary).getRGB());
+            }
+        }
+        return outputImage;
+    }
+
+    private BufferedImage applySimpleThreshold(BufferedImage image, int threshold) {
+        int width = image.getWidth();
+        int height = image.getHeight();
+        BufferedImage outputImage = new BufferedImage(width, height, BufferedImage.TYPE_BYTE_BINARY);
+
+        for (int y = 0; y < height; y++) {
+            for (int x = 0; x < width; x++) {
+                int gray = new Color(image.getRGB(x, y)).getRed();
+                int binary = gray > threshold ? 255 : 0;
+                outputImage.setRGB(x, y, new Color(binary, binary, binary).getRGB());
+            }
+        }
+        return outputImage;
+    }
+
+    public static void main(String[] args) {
+        SwingUtilities.invokeLater(() -> {
+            ImageProcessingApp app = new ImageProcessingApp();
+            app.setVisible(true);
+        });
+    }
+}
